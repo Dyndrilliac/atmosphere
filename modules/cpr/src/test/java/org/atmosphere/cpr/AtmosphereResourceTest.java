@@ -17,21 +17,17 @@ package org.atmosphere.cpr;
 
 import org.atmosphere.container.BlockingIOCometSupport;
 import org.atmosphere.handler.AbstractReflectorAtmosphereHandler;
+import org.atmosphere.handler.ReflectorServletProcessor;
 import org.atmosphere.websocket.WebSocket;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import javax.servlet.ServletConfig;
-import javax.servlet.ServletContext;
-import javax.servlet.ServletException;
-import javax.servlet.ServletOutputStream;
+import javax.servlet.*;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -40,6 +36,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -211,7 +208,7 @@ public class AtmosphereResourceTest {
                         framework.getBroadcasterFactory().get(),
                         request, response, null, null);
 
-        assertEquals(res0,res1);
+        assertEquals(res0, res1);
 
         HashSet set = new HashSet();
         set.add(res0);
@@ -262,4 +259,226 @@ public class AtmosphereResourceTest {
         verify(wswriter, times(0)).close(response);
     }
 
+    @Test
+    public void testCompletionNotAwareForStartAsync() throws IOException {
+        verifyTestCompletionAwareForStartAsync(false);
+    }
+
+    @Test
+    public void testCompletionAwareForStartAsync() throws IOException {
+        verifyTestCompletionAwareForStartAsync(true);
+    }
+
+    @Test
+    public void testCompletionNotAwareForGetAsync() throws IOException {
+        verifyTestCompletionAwareForGetAsync(false);
+    }
+
+    @Test
+    public void testCompletionAwareForGetAsync() throws IOException {
+        verifyTestCompletionAwareForGetAsync(true);
+    }
+
+    @Test
+    public void testCompletionNotAwareForSync() throws IOException, ServletException {
+        verifyTestCompletionAwareForSync(false);
+    }
+
+    @Test
+    public void testCompletionAwareForSync() throws IOException, ServletException {
+        verifyTestCompletionAwareForSync(true);
+    }
+
+    @Test
+    public void testCompletionAwareForSyncButStartAsync() throws IOException, ServletException {
+        Servlet s = mock(Servlet.class);
+        framework.addInitParameter(ApplicationConfig.RESPONSE_COMPLETION_AWARE, "true");
+        ReflectorServletProcessor handler = new ReflectorServletProcessor(s);
+        handler.init(framework.getAtmosphereConfig());
+
+        AtmosphereRequest request = new AtmosphereRequestImpl.Builder().pathInfo("/a").build();
+        AtmosphereResponseImpl response = mock(AtmosphereResponseImpl.class);
+        AtmosphereResourceImpl res = new AtmosphereResourceImpl();
+        res.initialize(framework.getAtmosphereConfig(),
+                framework.getBroadcasterFactory().get(),
+                request, response, null, null);
+        res.transport(AtmosphereResource.TRANSPORT.WEBSOCKET);
+        request.setAttribute(FrameworkConfig.ATMOSPHERE_RESOURCE, res);
+        request.setAttribute(FrameworkConfig.INJECTED_ATMOSPHERE_RESOURCE, res);
+
+        AsyncContext ac = request.startAsync();
+        handler.onRequest(res);
+        verify(response, times(0)).onComplete();
+        ac.complete();
+        verify(response, times(1)).onComplete();
+    }
+
+    @Test
+    public void testResponseWritingUnbuffered() throws IOException {
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        AtmosphereResponse response = new AtmosphereResponseImpl.Builder().asyncIOWriter(new TestAsyncIOWriter(baos)).build();
+        response.getOutputStream();
+        response.write("hello".getBytes());
+        // written unbuffered
+        assertEquals(baos.toString(), "hello");
+        response.write("hello again".getBytes());
+        // written unbuffered
+        assertEquals(baos.toString(), "hellohello again");
+    }
+
+    @Test
+    public void testResponseWritingBuffered() throws IOException {
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        AtmosphereRequest request =  mock(AtmosphereRequestImpl.class);
+        when(request.getAttribute(ApplicationConfig.RESPONSE_COMPLETION_AWARE)).thenReturn(Boolean.TRUE);
+        AtmosphereResponse response = new AtmosphereResponseImpl.Builder()
+                .request(request).asyncIOWriter(new TestAsyncIOWriter(baos)).build();
+        response.getOutputStream();
+        response.write("hello".getBytes());
+        // buffering the data and nothing written
+        assertEquals(baos.toString(), "");
+        response.write("hello again".getBytes());
+        // buffering the new data and writing the previously buffered data
+        assertEquals(baos.toString(), "hello");
+        ((AtmosphereResponseImpl)response).onComplete();
+        // the buffered data is written
+        assertEquals(baos.toString(), "hellohello again");
+        response.write("bye".getBytes());
+        // written unbuffered
+        assertEquals(baos.toString(), "hellohello againbye");
+    }
+
+    @Test
+    public void testResponseWritingBufferedReset() throws IOException {
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        AtmosphereRequest request =  mock(AtmosphereRequestImpl.class);
+        when(request.getAttribute(ApplicationConfig.RESPONSE_COMPLETION_AWARE)).thenReturn(Boolean.TRUE);
+        when(request.getAttribute(ApplicationConfig.RESPONSE_COMPLETION_RESET)).thenReturn(Boolean.TRUE);
+        AtmosphereResponse response = new AtmosphereResponseImpl.Builder()
+                .request(request).asyncIOWriter(new TestAsyncIOWriter(baos)).build();
+        response.getOutputStream();
+        response.write("hello".getBytes());
+        // buffering the data and nothing written
+        assertEquals(baos.toString(), "");
+        response.write("hello again".getBytes());
+        // buffering the new data and writing the previously buffered data
+        assertEquals(baos.toString(), "hello");
+        ((AtmosphereResponseImpl)response).onComplete();
+        // the buffered data is written
+        assertEquals(baos.toString(), "hellohello again");
+        response.write("bye".getBytes());
+        // written buffered again
+        assertEquals(baos.toString(), "hellohello again");
+        response.write("bye again".getBytes());
+        // the buffered data is written
+        assertEquals(baos.toString(), "hellohello againbye");
+        ((AtmosphereResponseImpl)response).onComplete();
+        // the buffered data is flushed
+        assertEquals(baos.toString(), "hellohello againbyebye again");
+    }
+
+    private static class TestAsyncIOWriter implements AsyncIOWriter {
+        private OutputStream out;
+        public TestAsyncIOWriter(OutputStream out) {
+            this.out = out;
+        }
+
+        @Override
+        public AsyncIOWriter redirect(AtmosphereResponse r, String location) throws IOException {
+            return this;
+        }
+
+        @Override
+        public AsyncIOWriter writeError(AtmosphereResponse r, int errorCode, String message) throws IOException {
+            return this;
+        }
+
+        @Override
+        public AsyncIOWriter write(AtmosphereResponse r, String data) throws IOException {
+            return this;
+        }
+
+        @Override
+        public AsyncIOWriter write(AtmosphereResponse r, byte[] data) throws IOException {
+            out.write(data);
+            return this;
+        }
+
+        @Override
+        public AsyncIOWriter write(AtmosphereResponse r, byte[] data, int offset, int length) throws IOException {
+            out.write(data, offset, length);
+            return this;
+        }
+
+        @Override
+        public void close(AtmosphereResponse r) throws IOException {
+        }
+
+        @Override
+        public AsyncIOWriter flush(AtmosphereResponse r) throws IOException {
+            return this;
+        }
+    }
+
+    private void verifyTestCompletionAwareForStartAsync(boolean aware) throws IOException {
+        if (aware) {
+            framework.addInitParameter(ApplicationConfig.RESPONSE_COMPLETION_AWARE, "true");
+        }
+        AtmosphereRequest request = AtmosphereRequestImpl.newInstance();
+        AtmosphereResponseImpl response = mock(AtmosphereResponseImpl.class);
+        AtmosphereResourceImpl res = new AtmosphereResourceImpl();
+        res.initialize(framework.getAtmosphereConfig(),
+                framework.getBroadcasterFactory().get(),
+                request, response, null, null);
+        res.transport(AtmosphereResource.TRANSPORT.WEBSOCKET);
+        request.setAttribute(FrameworkConfig.ATMOSPHERE_RESOURCE, res);
+
+        AsyncContext ac = request.startAsync();
+
+        verify(response, times(0)).onComplete();
+        ac.complete();
+        verify(response, times(aware ? 1 : 0)).onComplete();
+    }
+
+    private void verifyTestCompletionAwareForGetAsync(boolean aware) throws IOException {
+        if (aware) {
+            framework.addInitParameter(ApplicationConfig.RESPONSE_COMPLETION_AWARE, "true");
+        }
+        AtmosphereRequest request = AtmosphereRequestImpl.newInstance();
+        AtmosphereResponseImpl response = mock(AtmosphereResponseImpl.class);
+        AtmosphereResourceImpl res = new AtmosphereResourceImpl();
+        res.initialize(framework.getAtmosphereConfig(),
+                framework.getBroadcasterFactory().get(),
+                request, response, null, null);
+        res.transport(AtmosphereResource.TRANSPORT.WEBSOCKET);
+        request.setAttribute(FrameworkConfig.ATMOSPHERE_RESOURCE, res);
+
+        AsyncContext ac = request.getAsyncContext();
+
+        verify(response, times(0)).onComplete();
+        ac.complete();
+        verify(response, times(aware ? 1 : 0)).onComplete();
+    }
+
+    private void verifyTestCompletionAwareForSync(boolean aware) throws IOException, ServletException {
+        Servlet s = mock(Servlet.class);
+        if (aware) {
+            framework.addInitParameter(ApplicationConfig.RESPONSE_COMPLETION_AWARE, "true");
+        }
+        ReflectorServletProcessor handler = new ReflectorServletProcessor(s);
+        handler.init(framework.getAtmosphereConfig());
+
+        AtmosphereRequest request = new AtmosphereRequestImpl.Builder().pathInfo("/a").build();
+        AtmosphereResponseImpl response = mock(AtmosphereResponseImpl.class);
+        AtmosphereResourceImpl res = new AtmosphereResourceImpl();
+        res.initialize(framework.getAtmosphereConfig(),
+                framework.getBroadcasterFactory().get(),
+                request, response, null, null);
+        res.transport(AtmosphereResource.TRANSPORT.WEBSOCKET);
+        request.setAttribute(FrameworkConfig.ATMOSPHERE_RESOURCE, res);
+        request.setAttribute(FrameworkConfig.INJECTED_ATMOSPHERE_RESOURCE, res);
+
+        handler.onRequest(res);
+        verify(response, times(aware ? 1 : 0)).onComplete();
+    }
 }

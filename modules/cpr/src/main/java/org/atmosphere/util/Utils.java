@@ -43,6 +43,7 @@ import java.util.Set;
 import static org.atmosphere.cpr.ApplicationConfig.SUSPENDED_ATMOSPHERE_RESOURCE_UUID;
 import static org.atmosphere.cpr.FrameworkConfig.NEED_RUNTIME_INJECTION;
 import static org.atmosphere.cpr.HeaderConfig.WEBSOCKET_UPGRADE;
+import static org.atmosphere.cpr.HeaderConfig.WEBSOCKET_VERSION;
 
 /**
  * Utils class.
@@ -165,7 +166,7 @@ public final class Utils {
         }
 
         boolean isOK = false;
-        boolean isWebSocket = (request.getHeader("sec-websocket-version") != null || request.getHeader("Sec-WebSocket-Draft") != null);
+        boolean isWebSocket = (request.getHeader(WEBSOCKET_VERSION) != null || request.getHeader("Sec-WebSocket-Draft") != null);
         if (connection != null && connection.hasMoreElements()) {
             String[] e = connection.nextElement().toString().split(",");
             for (String upgrade : e) {
@@ -245,8 +246,22 @@ public final class Utils {
     }
 
     private static final Object injectWith(AtmosphereResource r) {
+
+        // Check for null when disconnect happens. This happens when websocket are closed by both the client and the server
+        // concurrently.
+        if (r == null) {
+            return null;
+        }
+
         AtmosphereHandler h = r.getAtmosphereHandler();
+        if (r.getAtmosphereHandler() == null) {
+            return null;
+        }
         if (AtmosphereFramework.REFLECTOR_ATMOSPHEREHANDLER.getClass().isAssignableFrom(h.getClass())) {
+            if (AtmosphereResourceImpl.class.cast(r).webSocket() == null
+                    || AtmosphereResourceImpl.class.cast(r).webSocket().webSocketHandler() == null) {
+                return null;
+            }
             return WebSocketProcessor.WebSocketHandlerProxy.class.cast(AtmosphereResourceImpl.class.cast(r).webSocket().webSocketHandler()).proxied();
         } else {
             return injectWith(h);
@@ -302,7 +317,8 @@ public final class Utils {
         }
 
         try {
-            return InjectableObjectFactory.class.cast(config.framework().objectFactory()).needRequestScoped(injectWith(h).getClass());
+            Object obj = injectWith(h);
+            return obj == null ? false : InjectableObjectFactory.class.cast(config.framework().objectFactory()).needRequestScoped(obj.getClass());
         } catch (Exception e) {
             LOGGER.error("", e);
             return false;

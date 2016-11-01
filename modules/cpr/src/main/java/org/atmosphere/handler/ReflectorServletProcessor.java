@@ -16,11 +16,13 @@
 
 package org.atmosphere.handler;
 
+import org.atmosphere.cpr.ApplicationConfig;
 import org.atmosphere.cpr.AtmosphereConfig;
 import org.atmosphere.cpr.AtmosphereHandler;
 import org.atmosphere.cpr.AtmosphereRequestImpl;
 import org.atmosphere.cpr.AtmosphereResource;
 import org.atmosphere.cpr.AtmosphereServletProcessor;
+import org.atmosphere.cpr.CompletionAware;
 import org.atmosphere.util.AtmosphereFilterChain;
 import org.atmosphere.util.FilterConfigImpl;
 import org.atmosphere.util.IOUtils;
@@ -36,7 +38,7 @@ import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
+
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -103,8 +105,7 @@ public class ReflectorServletProcessor extends AbstractReflectorAtmosphereHandle
         if (servlet != null) {
             logger.info("Installing Servlet {}", servletClassName == null ? servlet.getClass().getName() : servletClassName);
         } else {
-            // for now, not throw an exception, just in case if someone may call setServlet at later time
-            logger.warn("No servlet installed. Neither servlet nor servletClassName is set");
+            logger.info("No servlet installed. Neither servlet nor servletClassName is set");
         }
     }
 
@@ -161,11 +162,24 @@ public class ReflectorServletProcessor extends AbstractReflectorAtmosphereHandle
      */
     public void onRequest(AtmosphereResource r)
             throws IOException {
+        final boolean completionAware = 
+            Boolean.parseBoolean(r.getAtmosphereConfig().getInitParameter(ApplicationConfig.RESPONSE_COMPLETION_AWARE));
         try {
+            if (completionAware) {
+                r.getRequest().setAttribute(ApplicationConfig.RESPONSE_COMPLETION_AWARE, Boolean.TRUE);
+                if (Boolean.parseBoolean(r.getAtmosphereConfig().getInitParameter(ApplicationConfig.RESPONSE_COMPLETION_RESET))) {
+                    r.getRequest().setAttribute(ApplicationConfig.RESPONSE_COMPLETION_RESET, Boolean.TRUE);
+                }
+            }
             wrapper.service(r.getRequest(), r.getResponse());
         } catch (Throwable ex) {
             logger.error("onRequest()", ex);
             throw new RuntimeException(ex);
+        } finally {
+            // For the sync case, the completion is notified here. For the async case, it is notified by AsyncContext later
+            if (completionAware && r.getResponse() instanceof CompletionAware && !r.getRequest().isAsyncStarted()) {
+                ((CompletionAware)r.getResponse()).onComplete();
+            }
         }
     }
 

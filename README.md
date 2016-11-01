@@ -26,7 +26,7 @@ Commercial Support is available via [Async-IO.org](http://async-io.org)
 Get started using this step by step [tutorial](http://async-io.org/tutorial.html).
 
 ### Official Documentation
-Our Wiki contains [several tutorials](https://github.com/Atmosphere/atmosphere/wiki) for getting started as well as [FAQ](https://github.com/Atmosphere/atmosphere/wiki/Frequently-Asked-Questions). You can also browse the framework's [Javadoc](http://atmosphere.github.com/atmosphere/apidocs/) for Server Components, and [atmosphere.js](https://github.com/Atmosphere/atmosphere/wiki/jQuery.atmosphere.js-atmosphere.js-API) for Client Components.
+Our Wiki contains [several tutorials](https://github.com/Atmosphere/atmosphere/wiki) for getting started as well as [FAQ](https://github.com/Atmosphere/atmosphere/wiki/Frequently-Asked-Questions). You can also browse the framework's [Javadoc](http://atmosphere.github.com/atmosphere/apidocs/) for Server Components, and [atmosphere.js](https://github.com/Atmosphere/atmosphere/wiki/atmosphere.js-API) for Client Components.
 
 ### Quick Start
 
@@ -37,7 +37,7 @@ The Atmosphere Framework ships with many examples describing how to implement We
      <dependency>
          <groupId>org.atmosphere</groupId>
          <artifactId>atmosphere-{atmosphere-module}</artifactId>
-         <version>2.4.3</version>
+         <version>2.4.7</version>
       </dependency>
 ```
       
@@ -65,9 +65,9 @@ Atmosphere 2.5.x requires JDK 1.8
 
 [Change Log](./CHANGELOG.md)
 
-2.4.x release: [2.4.3](https://goo.gl/n5s5GL) [2.4.2](https://goo.gl/TulSUl) [2.4.1](https://github.com/Atmosphere/atmosphere/issues?q=label%3A2.4.1+is%3Aclosed) [2.4.0](https://goo.gl/GpB1B1)
+2.4.x release: [2.4.7](https://github.com/Atmosphere/atmosphere/issues?utf8=%E2%9C%93&q=label%3A2.4.7) [2.4.6](https://github.com/Atmosphere/atmosphere/issues?q=is%3Aclosed+label%3A2.4.6) [2.4.5](https://github.com/Atmosphere/atmosphere/issues?q=is%3Aclosed+label%3A2.4.5) [2.4.4](https://goo.gl/3CZ1qV) [2.4.3](https://goo.gl/n5s5GL) [2.4.2](https://goo.gl/TulSUl) [2.4.1](https://github.com/Atmosphere/atmosphere/issues?q=label%3A2.4.1+is%3Aclosed) [2.4.0](https://goo.gl/GpB1B1)
 
-2.3.x release: [2.3.7](https://goo.gl/EYqAJh) [2.3.6](https://github.com/Atmosphere/atmosphere/issues?q=is%3Aissue+is%3Aclosed+label%3A2.3.6) [2.3.5](https://goo.gl/BVr1PS) [2.3.4](https://goo.gl/5eiQXb) [2.3.3](https://goo.gl/6Yfr0p ) [2.3.2](https://goo.gl/PQ60X0 ) [2.3.1](https://goo.gl/6o9gjc) [2.3.0](https://github.com/Atmosphere/atmosphere/issues?q=label%3A2.3.0+is%3Aclosed)
+2.3.x release: [2.3.8](https://goo.gl/wzUetO) [2.3.7](https://goo.gl/EYqAJh) [2.3.6](https://github.com/Atmosphere/atmosphere/issues?q=is%3Aissue+is%3Aclosed+label%3A2.3.6) [2.3.5](https://goo.gl/BVr1PS) [2.3.4](https://goo.gl/5eiQXb) [2.3.3](https://goo.gl/6Yfr0p ) [2.3.2](https://goo.gl/PQ60X0 ) [2.3.1](https://goo.gl/6o9gjc) [2.3.0](https://github.com/Atmosphere/atmosphere/issues?q=label%3A2.3.0+is%3Aclosed)
 
 #### End Of Life Versions (go to [http://async-io.org](http://async-io.org) for commercial support)
 

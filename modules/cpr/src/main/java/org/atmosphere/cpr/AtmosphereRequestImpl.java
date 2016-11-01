@@ -86,6 +86,7 @@ public class AtmosphereRequestImpl extends HttpServletRequestWrapper implements 
     private AtomicBoolean streamSet = new AtomicBoolean();
     private AtomicBoolean readerSet = new AtomicBoolean();
     private String uuid;
+    private boolean noopsAsyncContextStarted;
 
     private AtmosphereRequestImpl(Builder b) {
         super(b.request == null ? new NoOpsRequest() : b.request);
@@ -209,7 +210,7 @@ public class AtmosphereRequestImpl extends HttpServletRequestWrapper implements 
 
     @Override
     public String getContentType() {
-        return b.contentType != null ? b.contentType : (b.body.isEmpty() && b.reader == null && b.inputStream == null) ? null : b.request.getContentType();
+        return b.contentType != null || b.noContentType ? b.contentType : b.request.getContentType();
     }
 
     @Override
@@ -609,26 +610,41 @@ public class AtmosphereRequestImpl extends HttpServletRequestWrapper implements 
 
     @Override
     public AsyncContext startAsync() {
+        AsyncContext ac;
         if (AtmosphereResource.TRANSPORT.WEBSOCKET == resource().transport()) {
-            return new NoOpsAsyncContext(getRequest(), resource().getResponse().getResponse()); 
+            noopsAsyncContextStarted = true;
+            ac = new NoOpsAsyncContext(getRequest(), resource().getResponse().getResponse());
+        } else {
+            ac = b.request.startAsync();
         }
-        return b.request.startAsync();
+        return isCompletionAware()
+                ? new CompletionAwareAsyncContext(ac, (CompletionAware)resource().getResponse()) : ac;
     }
 
     @Override
     public AsyncContext startAsync(ServletRequest request, ServletResponse response) {
+        AsyncContext ac;
         if (AtmosphereResource.TRANSPORT.WEBSOCKET == resource().transport()) {
-            return new NoOpsAsyncContext(request, response);
+            noopsAsyncContextStarted = true;
+            ac = new NoOpsAsyncContext(request, response);
+        } else {
+            ac = b.request.startAsync(request, response);
         }
-        return b.request.startAsync(request, response);
+        return isCompletionAware()
+                ? new CompletionAwareAsyncContext(ac, (CompletionAware)resource().getResponse()) : ac;
     }
 
     @Override
     public AsyncContext getAsyncContext() {
+        AsyncContext ac;
         if (AtmosphereResource.TRANSPORT.WEBSOCKET == resource().transport()) {
-            return new NoOpsAsyncContext(getRequest(), resource().getResponse().getResponse()); 
+            noopsAsyncContextStarted = true;
+            ac = new NoOpsAsyncContext(getRequest(), resource().getResponse().getResponse());
+        } else {
+            ac = b.request.getAsyncContext();
         }
-        return b.request.getAsyncContext();
+        return isCompletionAware()
+                ? new CompletionAwareAsyncContext(ac, (CompletionAware)resource().getResponse()) : ac;
     }
 
     @Override
@@ -783,16 +799,21 @@ public class AtmosphereRequestImpl extends HttpServletRequestWrapper implements 
     @Override
     public boolean isAsyncStarted() {
         if (AtmosphereResource.TRANSPORT.WEBSOCKET == resource().transport()) {
-            return true;
+            return noopsAsyncContextStarted;
         }
-        return b.request.isAsyncStarted();
+        try {
+            return b.request.isAsyncStarted();
+        } catch (Throwable ex) {
+            logger.trace("", ex);
+            return false;
+        }
     }
 
     @Override
     public boolean isAsyncSupported() {
         try {
             return b.request.isAsyncSupported();
-        } catch (Exception ex) {
+        } catch (Throwable ex) {
             // Servlet 2.5 incompatible API.
             logger.trace("", ex);
             return false;
@@ -945,6 +966,7 @@ public class AtmosphereRequestImpl extends HttpServletRequestWrapper implements 
         private String encoding = "UTF-8";
         private String methodType;
         private String contentType;
+        private boolean noContentType;
         private Long contentLength;
         private Map<String, String> headers = Collections.synchronizedMap(new HashMap<String, String>());
         private Map<String, String[]> queryStrings = Collections.synchronizedMap(new HashMap<String, String[]>());
@@ -1120,6 +1142,9 @@ public class AtmosphereRequestImpl extends HttpServletRequestWrapper implements 
         @Override
         public Builder contentType(String contentType) {
             this.contentType = contentType;
+            if (contentType == null) {
+                noContentType = true;
+            }
             return this;
         }
 
@@ -1410,7 +1435,7 @@ public class AtmosphereRequestImpl extends HttpServletRequestWrapper implements 
             b.request(request);
         }
 
-        HttpSession session = null;
+        HttpSession session = request.getSession(false);
         if (copySession) {
             session = request.getSession(createSession);
             if (session != null) {
@@ -1867,6 +1892,74 @@ public class AtmosphereRequestImpl extends HttpServletRequestWrapper implements 
 
     }
 
+    private boolean isCompletionAware() {
+        return Boolean.parseBoolean(resource().getAtmosphereConfig()
+                .getInitParameter(ApplicationConfig.RESPONSE_COMPLETION_AWARE));
+    }
+
+    private class CompletionAwareAsyncContext implements AsyncContext {
+        private AsyncContext context;
+        private CompletionAware callback;
+        
+        public CompletionAwareAsyncContext(AsyncContext context, CompletionAware callback) {
+            this.context = context;
+            this.callback = callback;
+        }
+
+        public void addListener(AsyncListener listener) throws IllegalStateException {
+            context.addListener(listener);
+        }
+
+        public void addListener(AsyncListener listener, ServletRequest request, ServletResponse response) throws IllegalStateException {
+            context.addListener(listener, request, response);
+        }
+
+        public void complete() {
+            context.complete();
+            callback.onComplete();
+        }
+
+        public <T extends AsyncListener> T createListener(Class<T> clazz) throws ServletException {
+            return context.createListener(clazz);
+        }
+
+        public void dispatch() throws IllegalStateException {
+            context.dispatch();
+        }
+
+        public void dispatch(ServletContext servletContext, String path) throws IllegalStateException {
+            context.dispatch(servletContext, path);
+        }
+
+        public void dispatch(String path) throws IllegalStateException {
+            context.dispatch(path);
+        }
+
+        public ServletRequest getRequest() {
+            return context.getRequest();
+        }
+
+        public ServletResponse getResponse() {
+            return context.getResponse();
+        }
+
+        public long getTimeout() {
+            return context.getTimeout();
+        }
+
+        public boolean hasOriginalRequestAndResponse() {
+            return context.hasOriginalRequestAndResponse();
+        }
+
+        public void setTimeout(long timeoutMilliseconds) throws IllegalStateException {
+            context.setTimeout(timeoutMilliseconds);
+        }
+
+        public void start(Runnable run) {
+            context.start(run);
+        }
+        
+    }
     private class NoOpsAsyncContext implements AsyncContext {
         private final ServletRequest request;
         private final ServletResponse response;
